@@ -61,6 +61,7 @@ class TriviaHandler(StreamRequestHandler):
             self.select_category()
         else:
             self.category = msg
+        logging.debug("Selected category: %s", self.category)
 
     # Method to select a difficulty level
     def select_level(self):
@@ -94,9 +95,10 @@ class TriviaHandler(StreamRequestHandler):
         api_url = "https://opentdb.com/api.php"
         params = {
             "amount": self.amount,
-            "category": self.category,
             "difficulty": difficulty[self.level - 1],
         }
+        if self.category != "Any":
+            params["category"] = self.category
         response = requests.get(api_url, params=params)
 
         if response.status_code == 200:
@@ -146,10 +148,10 @@ class TriviaHandler(StreamRequestHandler):
                 cursor.execute('SELECT * FROM players WHERE nickname = %s;',(self.nickname))
                 player = cursor.fetchone()
                 if not player:
-                    cursor.execute('INSERT INTO players (nickname, score) VALUES (%s, %s);',(self.nickname, self.score))
+                    cursor.execute('INSERT INTO players (nickname, score) VALUES (%s, %d);',(self.nickname, self.score))
                     connection.commit()
-                elif player["score"] < self.score:
-                    cursor.execute('UPDATE players SET score = %s WHERE nickname = %s;',(self.score,self.nickname))
+                elif player[0]["score"] < self.score:
+                    cursor.execute('UPDATE players SET score = %d WHERE nickname = %s;',(self.score,self.nickname))
                     connection.commit()
 
         except mysql.connector.Error as e:
@@ -160,7 +162,7 @@ class TriviaHandler(StreamRequestHandler):
             if 'connection' in locals() and connection.is_connected():
                 cursor.close()
                 connection.close()
-                print("MariaDB connection is closed")
+                logging.debug("MariaDB connection is closed")
 
     def show_scores(self):
         records = []
@@ -169,7 +171,7 @@ class TriviaHandler(StreamRequestHandler):
             connection = mysql.connector.connect(**DB_CONFIG)
             if connection.is_connected():
                 cursor = connection.cursor()
-                cursor.execute(f"SELECT TOP 10 * FROM players ORDER BY score DESC;")
+                cursor.execute(f"SELECT (nickname, score) FROM players ORDER BY score DESC LIMIT 10;")
                 records = cursor.fetchall()
 
         except mysql.connector.Error as e:
@@ -180,10 +182,13 @@ class TriviaHandler(StreamRequestHandler):
             if 'connection' in locals() and connection.is_connected():
                 cursor.close()
                 connection.close()
-                print("MariaDB connection is closed")
+                logging.debug("MariaDB connection is closed")
+        
+        logging.debug(records)
+            
         message = "\n"
         for i in records:
-            message += f"| {i['nickname']}\t| {i['score']}\t|\n"
+            message += f"| {i[0]}\t| {i[1]}\t|\n"
         self.wfile.write(message.encode())
 
     # Method to handle incoming requests
@@ -230,17 +235,17 @@ def setup_db():
                     nickname TEXT NOT NULL,\
                     score INT NOT NULL\
                     );')
-            cursor.commit()
+            connection.commit()
 
     except mysql.connector.Error as e:
-        print("Error while connecting to MariaDB", e)
+        logging.error("Error while connecting to MariaDB", e)
 
     finally:
         # Close database connection
         if 'connection' in locals() and connection.is_connected():
             cursor.close()
             connection.close()
-            print("MariaDB connection is closed")
+            logging.debug("MariaDB connection is closed")
 
 # Entry point of the program
 if __name__ == "__main__":
