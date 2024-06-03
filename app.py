@@ -5,7 +5,7 @@ import random  # For shuffling options
 import mysql.connector
 from html import unescape
 # Configure logging to show debug messages
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 # Database configuration
 DB_CONFIG = {
@@ -54,7 +54,7 @@ class TriviaHandler(StreamRequestHandler):
     def select_category(self):
         self.wfile.write(b"Select the category:\n")
         for code, name in self.CATEGORIES.items():
-            self.wfile.write(f"\t{code}: {name}\n".encode())
+            self.wfile.write(f"    {code}: {name}\n".encode())
         msg = self.rfile.readline().strip().decode()
         if msg not in self.CATEGORIES:
             self.wfile.write(b"Invalid category\n")
@@ -66,9 +66,9 @@ class TriviaHandler(StreamRequestHandler):
     # Method to select a difficulty level
     def select_level(self):
         self.wfile.write(b"Select the level:\n")
-        self.wfile.write(b"\t1 - easy\n")
-        self.wfile.write(b"\t2 - medium\n")
-        self.wfile.write(b"\t3 - hard\n")
+        self.wfile.write(b"    1 - easy\n")
+        self.wfile.write(b"    2 - medium\n")
+        self.wfile.write(b"    3 - hard\n")
         msg = self.rfile.readline().strip().decode()
         if msg not in ["1", "2", "3"]:
             self.wfile.write(b"Invalid level\n")
@@ -143,16 +143,16 @@ class TriviaHandler(StreamRequestHandler):
         try:
             # Establish a connection to the database
             connection = mysql.connector.connect(**DB_CONFIG)
+            self.score*=self.level
             if connection.is_connected():
                 cursor = connection.cursor()
-                cursor.execute('SELECT * FROM players WHERE nickname = %s;',(self.nickname))
+                cursor.execute('SELECT * FROM players WHERE nickname = %s;',(self.nickname,))
                 player = cursor.fetchone()
                 if not player:
-                    cursor.execute('INSERT INTO players (nickname, score) VALUES (%s, %d);',(self.nickname, self.score))
-                    connection.commit()
+                    cursor.execute('INSERT INTO players (nickname, score) VALUES (%s, %s);',(self.nickname, self.score))
                 elif player[0]["score"] < self.score:
-                    cursor.execute('UPDATE players SET score = %d WHERE nickname = %s;',(self.score,self.nickname))
-                    connection.commit()
+                    cursor.execute('UPDATE players SET score = %s WHERE nickname = %s;',(self.score,self.nickname))
+                connection.commit()
 
         except mysql.connector.Error as e:
             logging.error("Error while connecting to MariaDB", e)
@@ -171,7 +171,7 @@ class TriviaHandler(StreamRequestHandler):
             connection = mysql.connector.connect(**DB_CONFIG)
             if connection.is_connected():
                 cursor = connection.cursor()
-                cursor.execute(f"SELECT (nickname, score) FROM players ORDER BY score DESC LIMIT 10;")
+                cursor.execute("SELECT nickname, score FROM players ORDER BY score DESC LIMIT 10;")
                 records = cursor.fetchall()
 
         except mysql.connector.Error as e:
@@ -183,12 +183,13 @@ class TriviaHandler(StreamRequestHandler):
                 cursor.close()
                 connection.close()
                 logging.debug("MariaDB connection is closed")
-        
+
         logging.debug(records)
-            
+
         message = "\n"
         for i in records:
             message += f"| {i[0]}\t| {i[1]}\t|\n"
+        message += "\n"
         self.wfile.write(message.encode())
 
     # Method to handle incoming requests
@@ -196,7 +197,6 @@ class TriviaHandler(StreamRequestHandler):
         self.score = 0
         # Prompt for and retrieve the user's nickname
         if not self.retrieve_nickname():
-            self.wfile.write(b"Please provide a username\n")
             self.nickname = "guest"
         # Prompt for and select the trivia category
         self.select_category()
@@ -218,9 +218,11 @@ class TriviaHandler(StreamRequestHandler):
         # Display and handle each trivia question
         for question in self.questions:
             self.display_question(question)
-        if self.nickname != "guest" and self.score != 0:
+        if self.nickname != "guest" or self.score != 0:
             self.update_scores()
         self.show_scores()
+
+    def finish(self) -> None:  
         self.wfile.write(b"Ending game\nBye\n")
         self.request.close()
 
