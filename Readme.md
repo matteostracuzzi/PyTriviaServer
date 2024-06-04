@@ -20,7 +20,7 @@ A multi-threaded TCP server that serves trivia questions to clients. It allows u
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/yourusername/trivia-server.git
+    git clone https://github.com/matteostracuzzi/PyTriviaServer.git
     cd trivia-server
     ```
 
